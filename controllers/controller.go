@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"Netflix/config"
 	"Netflix/model"
 	"context"
 	"encoding/json"
@@ -12,32 +13,17 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const connectionString = "mongodb+srv://nayakvivek951_db_user:VivekNayak004@cluster0.jlhik43.mongodb.net/?appName=Cluster0"
-const dbName = "netflix"
-const colName = "watchlist"
-
-var collection *mongo.Collection
-
-func init() {
-	clientOptions := options.Client().ApplyURI(connectionString)
-
-	client, err := mongo.Connect(context.TODO(), clientOptions)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("MongoDB connected")
-
-	collection = client.Database(dbName).Collection(colName)
-	fmt.Println("Collection is ready")
+// get collection from config instead of local connection
+func getCollection() *mongo.Collection {
+	return config.GetCollection("watchlist")
 }
 
 // ─── DB Helpers (unexported) ──────────────────────────────────────────────────
 
 func insertOneMovie(movie model.NetFlix) {
-	inserted, err := collection.InsertOne(context.Background(), movie)
+	inserted, err := getCollection().InsertOne(context.Background(), movie)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +35,7 @@ func updateOneMovie(movieID string) {
 	filter := bson.M{"_id": id}
 	update := bson.M{"$set": bson.M{"watched": true}} // ✅ lowercase $set
 
-	result, err := collection.UpdateOne(context.TODO(), filter, update)
+	result, err := getCollection().UpdateOne(context.TODO(), filter, update)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,7 +43,7 @@ func updateOneMovie(movieID string) {
 }
 
 func getAllMovies() []primitive.M {
-	cursor, err := collection.Find(context.Background(), bson.D{})
+	cursor, err := getCollection().Find(context.Background(), bson.D{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,7 +63,7 @@ func getAllMovies() []primitive.M {
 func deleteOneMovie(movieID string) {
 	id, _ := primitive.ObjectIDFromHex(movieID)
 	filter := bson.M{"_id": id}
-	count, err := collection.DeleteOne(context.Background(), filter)
+	count, err := getCollection().DeleteOne(context.Background(), filter)
 	if err != nil {
 		log.Fatal(err)
 	}

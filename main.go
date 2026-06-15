@@ -1,18 +1,32 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"fmt"
 	"net/http"
 
-	routes "Netflix/routes"
+	"Netflix/config"
+	"Netflix/routes"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	fmt.Println("Hello from mongo")
+	// load .env first, before anything else
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(".env file not found")
+	}
+
+	// connect to databases
+	config.ConnectDB()
+	config.ConnectRedis()
+
+	// setup router
 	r := mux.NewRouter()
 	routes.RegisterRoutes(r)
-	log.Fatal(http.ListenAndServe(":8080", r)) // ✅ colon before port
+
+	fmt.Println("Server starting on port 8080")
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
