@@ -23,6 +23,7 @@ func getCollection() *mongo.Collection {
 // ─── DB Helpers (unexported) ──────────────────────────────────────────────────
 
 func insertOneMovie(movie model.NetFlix) {
+	fmt.Println(movie)
 	inserted, err := getCollection().InsertOne(context.Background(), movie)
 	if err != nil {
 		log.Fatal(err)
