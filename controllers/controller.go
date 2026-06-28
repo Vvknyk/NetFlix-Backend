@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"Netflix/config"
+	helper "Netflix/helpers"
 	"Netflix/model"
 	"context"
 	"encoding/json"
@@ -99,4 +100,25 @@ func DeleteMovie(w http.ResponseWriter, r *http.Request) {
 	deleteOneMovie(params["id"])
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(params["id"])
+}
+
+func GetMe(w http.ResponseWriter, r *http.Request) {
+	userId := r.Context().Value("user_id").(string)
+
+	//convert userID to _id format
+	id, _ := primitive.ObjectIDFromHex(userId)
+	col := config.GetCollection("users")
+
+	var user model.User
+	err := col.FindOne(context.Background(), bson.M{"_id": id}).Decode(&user)
+
+	if err != nil {
+		helper.SendError(w, http.StatusNotFound, "User not found")
+		return
+	}
+
+	user.Password = ""
+	user.RefreshToken = ""
+	helper.SendSuccess(w, http.StatusOK, "User profile", user)
+
 }

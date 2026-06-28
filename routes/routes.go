@@ -2,6 +2,8 @@ package routes
 
 import (
 	"Netflix/controllers"
+	"Netflix/middleware"
+	"net/http"
 
 	"github.com/gorilla/mux"
 )
@@ -17,4 +19,8 @@ func RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/movie", controllers.CreateMovie).Methods("POST")
 	r.HandleFunc("/api/movie/{id}", controllers.MarkAsWatched).Methods("PUT")
 	r.HandleFunc("/api/movie/{id}", controllers.DeleteMovie).Methods("DELETE")
+
+	r.Handle("/api/me", middleware.AuthMiddleware(
+		http.HandlerFunc(controllers.GetMe),
+	)).Methods("GET")
 }
