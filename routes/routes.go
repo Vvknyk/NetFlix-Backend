@@ -3,7 +3,6 @@ package routes
 import (
 	"Netflix/controllers"
 	"Netflix/middleware"
-	"net/http"
 
 	"github.com/gorilla/mux"
 )
@@ -12,15 +11,20 @@ func RegisterRoutes(r *mux.Router) {
 	// auth routes
 	r.HandleFunc("/api/auth/register", controllers.Register).Methods("POST")
 	r.HandleFunc("/api/auth/login", controllers.Login).Methods("POST")
-	r.HandleFunc("/api/auth/logout", controllers.Logout).Methods("POST")
-	r.HandleFunc("/api/auth/refresh-token", controllers.RefreshToken).Methods("POST")
 
-	r.HandleFunc("/api/movies", controllers.GetAllMovies).Methods("GET")
-	r.HandleFunc("/api/movie", controllers.CreateMovie).Methods("POST")
-	r.HandleFunc("/api/movie/{id}", controllers.MarkAsWatched).Methods("PUT")
-	r.HandleFunc("/api/movie/{id}", controllers.DeleteMovie).Methods("DELETE")
+	protected := r.PathPrefix("/api").Subrouter()
+	protected.Use(middleware.AuthMiddleware)
+	protected.HandleFunc("/api/auth/logout", controllers.Logout).Methods("POST")
+	protected.HandleFunc("/api/auth/refresh-token", controllers.RefreshToken).Methods("POST")
+	r.HandleFunc("/content/search", controllers.SearchContent).Methods("GET")
+	admin := r.PathPrefix("/api/admin").Subrouter()
+	admin.Use(middleware.AuthMiddleware)
+	admin.Use(middleware.AdminCheck)
 
-	r.Handle("/api/me", middleware.AuthMiddleware(
-		http.HandlerFunc(controllers.GetMe),
-	)).Methods("GET")
+	admin.HandleFunc("/createContent", controllers.CreateContent).Methods("POST")
+	r.HandleFunc("/GetAllContent", controllers.GetAllContent).Methods("GET")
+	admin.HandleFunc("/GetContentByID/{id}", controllers.GetContentByID).Methods("GET")
+	admin.HandleFunc("/UpdateContent/{id}", controllers.GetAllContent).Methods("GET")
+	admin.HandleFunc("/DeleteContent/{id}", controllers.GetAllContent).Methods("GET")
+
 }

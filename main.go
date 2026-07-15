@@ -1,8 +1,8 @@
 package main
 
 import (
-	"log"
 	"fmt"
+	"log"
 	"net/http"
 
 	"Netflix/config"
@@ -22,6 +22,7 @@ func main() {
 	// connect to databases
 	config.ConnectDB()
 	config.ConnectRedis()
+	config.CreateTextIndex()
 
 	// setup router
 	r := mux.NewRouter()

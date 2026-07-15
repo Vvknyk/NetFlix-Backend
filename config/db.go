@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -37,4 +38,26 @@ func ConnectDB() {
 
 func GetCollection(collectionName string) *mongo.Collection {
 	return Client.Database(dbName).Collection(collectionName)
+}
+
+func CreateTextIndex() {
+	collection := GetCollection("allShows")
+
+	indexModel := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "title", Value: "text"},
+			{Key: "description", Value: "text"},
+			{Key: "cast", Value: "text"},
+			{Key: "genre", Value: "text"},
+			{Key: "director", Value: "text"},
+		},
+		Options: options.Index().SetName("content_text_index"),
+	}
+
+	_, err := collection.Indexes().CreateOne(context.Background(), indexModel)
+	if err != nil {
+		log.Println("Index creation failed:", err)
+		return
+	}
+	log.Println("Text index created successfully")
 }
