@@ -16,7 +16,7 @@ type Content struct {
 	ContentType    string   `json:"type" bson:"type"`
 	ReleaseYear    int      `json:"release_year" bson:"release_year"`
 	MaturityRating string   `json:"maturity_rating" bson:"maturity_rating"`
-	Language       []string `json:"language" bson:"language"`
+	Languages      []string `json:"languages" bson:"languages"`
 
 	// Media
 	ThumbnailUrl string `json:"thumbnail_url" bson:"thumbnail_url"`

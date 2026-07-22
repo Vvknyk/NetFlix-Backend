@@ -21,7 +21,7 @@ func RegisterRoutes(r *mux.Router) {
 	admin.Use(middleware.AuthMiddleware)
 	admin.Use(middleware.AdminCheck)
 
-	admin.HandleFunc("/createContent", controllers.CreateContent).Methods("POST")
+	r.HandleFunc("/createContent", controllers.CreateContent).Methods("POST")
 	r.HandleFunc("/GetAllContent", controllers.GetAllContent).Methods("GET")
 	admin.HandleFunc("/GetContentByID/{id}", controllers.GetContentByID).Methods("GET")
 	admin.HandleFunc("/UpdateContent/{id}", controllers.GetAllContent).Methods("GET")

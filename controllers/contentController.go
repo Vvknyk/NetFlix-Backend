@@ -5,6 +5,7 @@ import (
 	helper "Netflix/helpers"
 	"fmt"
 	"log"
+	"strings"
 
 	"Netflix/model"
 	"context"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/qdrant/go-client/qdrant"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -31,13 +33,11 @@ func CreateContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// basic validation
 	if input.Title == "" || input.ContentType == "" {
 		helper.SendError(w, http.StatusBadRequest, "Title and type are required")
 		return
 	}
 
-	// build full content struct
 	content := model.Content{
 		ID:             primitive.NewObjectID(),
 		Title:          input.Title,
@@ -45,7 +45,7 @@ func CreateContent(w http.ResponseWriter, r *http.Request) {
 		ContentType:    input.ContentType,
 		ReleaseYear:    input.ReleaseYear,
 		MaturityRating: input.MaturityRating,
-		Language:       input.Languages,
+		Languages:      input.Languages,
 		ThumbnailUrl:   input.ThumbnailUrl,
 		VideoUrl:       input.VideoUrl,
 		TrailerUrl:     input.TrailerUrl,
@@ -60,10 +60,52 @@ func CreateContent(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:      time.Now(),
 	}
 
+	// Step 1 — insert into MongoDB first
 	_, err = getContentCollection().InsertOne(context.Background(), content)
 	if err != nil {
+		fmt.Println("error is", err)
 		helper.SendError(w, http.StatusInternalServerError, "Error creating content")
 		return
+	}
+
+	// Step 2 — generate embedding text
+	embeddingText := input.Title + " " +
+		input.Description + " " +
+		strings.Join(input.Genre, " ") + " " +
+		strings.Join(input.Cast, " ") + " " +
+		input.ContentType
+
+	// Step 3 — generate vector via Ollama
+	vector, err := config.GenerateEmbedding(embeddingText)
+	if err != nil {
+		fmt.Println("Vector generation failed:", err)
+	} else {
+		// Step 4 — convert float64 to float32 because float64 used more memory
+		float32Vector := make([]float32, len(vector))
+		for i, v := range vector {
+			float32Vector[i] = float32(v)
+		}
+
+		// Step 5 — upsert to Qdrant
+		_, err = config.QdrantClient.Upsert(context.Background(), &qdrant.UpsertPoints{
+			CollectionName: "content_vectors",
+			Points: []*qdrant.PointStruct{
+				{
+					Id:      qdrant.NewIDNum(uint64(time.Now().UnixNano())),
+					Vectors: qdrant.NewVectors(float32Vector...),
+					Payload: qdrant.NewValueMap(map[string]any{
+						"content_id": content.ID.Hex(),
+						"title":      content.Title,
+						"type":       content.ContentType,
+					}),
+				},
+			},
+		})
+		if err != nil {
+			fmt.Println("Qdrant upsert failed:", err)
+		} else {
+			fmt.Println("Vector stored in Qdrant successfully")
+		}
 	}
 
 	helper.SendSuccess(w, http.StatusCreated, "Content created successfully", content)
@@ -234,41 +276,74 @@ func GetTrendingContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func SearchContent(w http.ResponseWriter, r *http.Request) {
-	// Step 1 — get search query from URL params
 	text := r.URL.Query().Get("q")
-
-	// Step 2 — validate
 	if text == "" {
 		helper.SendError(w, http.StatusBadRequest, "Please provide search text")
 		return
 	}
 
-	// Step 3 — build text search filter
-	filter := bson.M{
-		"$text": bson.M{
-			"$search": text, // ← lowercase $search
-		},
+	// Step 1 — generate vector from query
+	vector, err := config.GenerateEmbedding(text)
+	if err != nil {
+		helper.SendError(w, http.StatusInternalServerError, "Vector generation failed")
+		return
 	}
 
-	// Step 4 — query MongoDB
-	cursor, err := getContentCollection().Find(context.Background(), filter)
+	// Step 2 — convert float64 to float32
+	float32Vector := make([]float32, len(vector))
+	for i, v := range vector {
+		float32Vector[i] = float32(v)
+	}
+
+	// Step 3 — search Qdrant
+	limit := uint64(10)
+	results, err := config.QdrantClient.Query(context.Background(), &qdrant.QueryPoints{
+		CollectionName: "content_vectors",
+		Query:          qdrant.NewQuery(float32Vector...),
+		Limit:          &limit,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
 	if err != nil {
 		helper.SendError(w, http.StatusInternalServerError, "Search failed")
 		return
 	}
+
+	if len(results) == 0 {
+		helper.SendSuccess(w, http.StatusOK, "No results found", nil)
+		return
+	}
+
+	// Step 4 — extract content IDs from payload
+	var contentIDs []primitive.ObjectID
+	for _, point := range results {
+		contentIDStr := point.Payload["content_id"].GetStringValue()
+		contentID, err := primitive.ObjectIDFromHex(contentIDStr)
+		if err != nil {
+			continue
+		}
+		contentIDs = append(contentIDs, contentID)
+	}
+
+	// Step 5 — fetch all content from MongoDB in ONE query using $in
+	cursor, err := getContentCollection().Find(
+		context.Background(),
+		bson.M{"_id": bson.M{"$in": contentIDs}},
+	)
+	if err != nil {
+		helper.SendError(w, http.StatusInternalServerError, "Failed to fetch content")
+		return
+	}
 	defer cursor.Close(context.Background())
 
-	// Step 5 — decode cursor into slice
+	// Step 6 — decode results
 	var contents []model.Content
 	for cursor.Next(context.Background()) {
 		var content model.Content
 		if err := cursor.Decode(&content); err != nil {
-			helper.SendError(w, http.StatusInternalServerError, "Error decoding results")
-			return
+			continue
 		}
 		contents = append(contents, content)
 	}
 
-	// Step 6 — return results
 	helper.SendSuccess(w, http.StatusOK, "Search results", contents)
 }
